@@ -91,18 +91,6 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception as e:
             print(f"无法私聊用户 {user_id}: {e}")
         
-if user_usage[user_id] >= MAX_FREE_TIMES:
-    if user_id in group_members:
-        # 已经在群里 → 提示购买会员/次数
-        await update.message.reply_text(
-            "🚫 今日免费次数已用完\n\n💎 你已在 Echo AI 群组，可通过购买会员获得更多抠图次数"
-        )
-    else:
-        # 未加入群组 → 提示加群
-        await update.message.reply_text(
-            "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
-        )
-    return
 
 
 
@@ -116,10 +104,25 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_usage[user_id] = 0
 
     # 如果超过免费次数，直接拦截
-    if user_usage[user_id] >= MAX_FREE_TIMES:
-        await update.message.reply_text("🚫 今日免费次数已用完\n\n"
-                                        "👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK)
-        return  # ⛔️ 不再抠图
+   # 如果超过免费次数，直接拦截
+if user_usage[user_id] >= MAX_FREE_TIMES:
+    try:
+        # 判断是否在群里
+        member = await context.bot.get_chat_member(chat_id="@EchoAICut", user_id=user_id)
+        if member.status in ["member", "administrator", "creator"]:
+            await update.message.reply_text(
+                "🚫 今日免费次数已用完\n\n✅ 你已在 Echo AI 群组，可通过购买会员获得更多抠图次数"
+            )
+        else:
+            await update.message.reply_text(
+                "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
+            )
+    except Exception as e:
+        # 获取失败也提示加群
+        await update.message.reply_text(
+            "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
+        )
+    return  # ⛔️ 不再抠图
 
     # 使用次数 +1
     user_usage[user_id] += 1
