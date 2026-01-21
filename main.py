@@ -68,20 +68,28 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 新增一个处理函数：用户加入群组时 +1 次数
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_member = update.chat_member
+    user = chat_member.new_chat_member.user
 
-    if chat_member.new_chat_member.status in ["member", "administrator", "creator"]:
-        user_id = chat_member.new_chat_member.user.id
+    # 只处理新加入成员
+    if chat_member.new_chat_member.status == "member":
+        user_id = user.id
 
+        # 初始化次数
         if user_id not in user_usage:
             user_usage[user_id] = 0
 
-          # ⭐ 关键改动：给用户“退回 1 次使用”
-        user_usage[user_id] -= 1
+        # 增加一次机会
+        user_usage[user_id] += 1
 
-        await context.bot.send_message(
-            chat_id=chat_member.chat.id,
-            text="🎉 欢迎加入 Echo AI 群组！\n已为你增加 1 次免费抠图机会～\n📸 现在直接在群里发送图片即可使用"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=user_id,  # 私聊用户
+                text=f"🎉 欢迎加入 Echo AI 群组！\n已为你增加 1 次免费抠图机会～\n今日剩余次数：{MAX_FREE_TIMES - user_usage[user_id] if user_usage[user_id] < MAX_FREE_TIMES else 0}"
+            )
+        except Exception as e:
+            # 用户可能没启动 Bot，无法发送私聊
+            print(f"无法私聊用户 {user_id}: {e}")
+        
 
 
 # ====== 四、处理图片消息（核心功能） ======
