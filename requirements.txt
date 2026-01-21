@@ -1,15 +1,4 @@
-
-
-# 核心 Telegram Bot 库 - 使用最新稳定版（2026年1月当前最新是 v22.x 系列）
-python-telegram-bot>==22.5
-
-# HTTP 请求（remove.bg API 调用）
-requests>=2.32.0
-
-# 图像处理（如果你后续想加本地预处理/压缩/格式转换等）
-Pillow>=10.4.0
-
-# rembg - AI 抠图库（本地 fallback 用）
-# 注意：这个包很重（会拉 torch / onnxruntime 等几百 MB 依赖）
-# 建议：先注释掉这一行，确认 bot 基本功能（/start、发图、remove.bg API）跑通后再启用
-# rembg>=2.0.0
+python-telegram-bot==22.5
+requests==2.32.3
+Pillow==10.4.0
+# rembg>=2.0.0   # 暂时注释，构建成功后再加
