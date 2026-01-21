@@ -122,8 +122,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ====== 五、创建 Bot 应用 ======
-app = ApplicationBuilder().token(BOT_TOKEN).build()
+#==app = ApplicationBuilder().token(BOT_TOKEN).build()
+from telegram.ext import Application  # 确保导入 Application（你已经导入了 telegram.ext，但保险起见加这一行）
 
+app = Application.builder().token(BOT_TOKEN).build()
 # ====== 六、注册处理器 ======
 app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
