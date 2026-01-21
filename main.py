@@ -100,31 +100,29 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
 
     # 初始化次数
+ 
     if user_id not in user_usage:
         user_usage[user_id] = 0
 
-    # 如果超过免费次数，直接拦截
-   # 如果超过免费次数，直接拦截
-if user_usage[user_id] >= MAX_FREE_TIMES:
-    try:
-        # 判断是否在群里
-        member = await context.bot.get_chat_member(chat_id="@EchoAICut", user_id=user_id)
-        if member.status in ["member", "administrator", "creator"]:
-            await update.message.reply_text(
-                "🚫 今日免费次数已用完\n\n✅ 你已在 Echo AI 群组，可通过购买会员获得更多抠图次数"
-            )
-        else:
+    # 超过免费次数 → 判断是否在群里
+    if user_usage[user_id] >= MAX_FREE_TIMES:
+        try:
+            member = await context.bot.get_chat_member(chat_id="@EchoAICut", user_id=user_id)
+            if member.status in ["member", "administrator", "creator"]:
+                await update.message.reply_text(
+                    "🚫 今日免费次数已用完\n\n✅ 你已在 Echo AI 群组，可通过购买会员获得更多抠图次数"
+                )
+            else:
+                await update.message.reply_text(
+                    "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
+                )
+        except Exception:
             await update.message.reply_text(
                 "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
             )
-    except Exception as e:
-        # 获取失败也提示加群
-        await update.message.reply_text(
-            "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
-        )
-    return  # ⛔️ 不再抠图
+        return
 
-    # 使用次数 +1
+    # ✅ 次数有效 → 增加一次使用
     user_usage[user_id] += 1
 
     # 提示用户
