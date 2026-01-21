@@ -183,4 +183,12 @@ def main():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main()
+   print("Starting bot...")
+    app = Application.builder().token(BOT_TOKEN).build()
+    # add_handler 代码...
+    app.run_polling(
+        allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
+        poll_interval=0.5,
+        timeout=20
+    )
