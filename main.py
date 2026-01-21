@@ -181,14 +181,9 @@ def main():
 
     print("🤖 Bot 启动成功，正在轮询...")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
-
+    drop_pending_updates=True,       # 强烈推荐加，丢弃旧更新，避免卡住
+    poll_interval=0.5,               # 加快响应
+    timeout=20                       # 超时设置
 if __name__ == "__main__":
-   print("Starting bot...")
-    app = Application.builder().token(BOT_TOKEN).build()
-    # add_handler 代码...
-    app.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
-        poll_interval=0.5,
-        timeout=20
-    )
+    main()# ← 只调用 main() 函数，不要重复写 app 和 run_polling
+    
