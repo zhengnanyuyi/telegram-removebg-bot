@@ -68,9 +68,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         remaining = max(0, MAX_FREE_TIMES - used)
         msg = f"今日已使用 {used} 次，剩余 {remaining} 次"
         if remaining == 0:
-            msg += f"\n\n🚫 今日免费抠图次数已用完🎁 加入 Echo AI 群组即可解锁「+1 次免费抠图」
-                         💡 很多人每天都在群里用
-                         👇 点击加入：{CHANNEL_LINK}"
+            msg += f"\n\n🚫 今日免费抠图次数已用完🎁 加入 Echo AI 群组即可解锁「+1 次免费抠图」💡 很多人每天都在群里用👇 点击加入：{CHANNEL_LINK}"
         await update.message.reply_text(msg)
         return
 
