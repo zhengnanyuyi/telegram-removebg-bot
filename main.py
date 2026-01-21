@@ -49,31 +49,6 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-
-# 加入群组增加 1 次免费抠图机会
-# 新增一个处理函数：用户加入群组时 +1 次数
-async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_member = update.chat_member
-    if chat_member.new_chat_member.status in ["member", "administrator", "creator"]:
-        user_id = chat_member.new_chat_member.user.id
-        # 只给新加入的用户 +1 次（避免重复加）
-        if user_id not in user_usage:
-            user_usage[user_id] = 0
-        user_usage[user_id] += 1  # +1 次机会
-        await context.bot.send_message(
-            chat_id=chat_member.chat.id,
-            text=f"欢迎Echo AI！🎉 已为你增加 1 次免费抠图机会～\n当前剩余：{MAX_FREE_TIMES - user_usage[user_id] + 1} 次"
-        )
-
-# 注册这个 handler
-app.add_handler(ChatMemberHandler(welcome_new_member, ChatMemberHandler.CHAT_MEMBER))
-
-
-
-
-
-
-
     
     # ====== 点击「升级会员」=====
     if text == "💎 升级会员":
@@ -87,6 +62,26 @@ app.add_handler(ChatMemberHandler(welcome_new_member, ChatMemberHandler.CHAT_MEM
     await update.message.reply_text("欢迎使用智能抠图 Bot 👋\n\n"
                                     "📸 直接发送图片即可抠图",
                                     reply_markup=reply_markup)
+
+
+# 加入群组增加 1 次免费抠图机会
+# 新增一个处理函数：用户加入群组时 +1 次数
+async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_member = update.chat_member
+
+    if chat_member.new_chat_member.status in ["member", "administrator", "creator"]:
+        user_id = chat_member.new_chat_member.user.id
+
+        if user_id not in user_usage:
+            user_usage[user_id] = 0
+
+          # ⭐ 关键改动：给用户“退回 1 次使用”
+        user_usage[user_id] -= 1
+
+        await context.bot.send_message(
+            chat_id=chat_member.chat.id,
+            text="🎉 欢迎加入 Echo AI 群组！\n已为你增加 1 次免费抠图机会～\n📸 现在直接在群里发送图片即可使用"
+        )
 
 
 # ====== 四、处理图片消息（核心功能） ======
@@ -158,7 +153,8 @@ app = Application.builder().token(BOT_TOKEN).build()
 # ====== 六、注册处理器 ======
 app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
-
+#=== 注册这个 handler
+app.add_handler(ChatMemberHandler(welcome_new_member, ChatMemberHandler.CHAT_MEMBER))
 # ====== 七、启动 Bot ======
 print("🤖 Bot 正在运行...")
 app.run_polling()
