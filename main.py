@@ -4,10 +4,12 @@ from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filte
 from telegram import ReplyKeyboardMarkup
 import requests  # 用来请求 remove.bg API
 import os  # 删除临时文件
+from telegram.ext import ChatMemberHandler
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY")
-CHANNEL_LINK = os.getenv("CHANNEL_LINK")
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")# ====== 机器人Token
+REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY") # ====== remove.bg API KEY
+CHANNEL_LINK = os.getenv("CHANNEL_LINK") # ====== 频道链接
 
 # ====== 频道链接（用户超过次数时引导关注） ======
 CHANNEL_LINK = "t.me/EchoAICut"
@@ -43,9 +45,36 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if remaining < 0:
             remaining = 0
         await update.message.reply_text(f"🚫 今日免费次数已用完（剩余 {remaining} 次）\n\n"
-                                        "👉 关注频道即可继续使用更多次数：\n" + CHANNEL_LINK)
+                                        "👉 加入Echo AI即可继续使用更多次数：\n" + CHANNEL_LINK)
         return
 
+
+
+# 加入群组增加 1 次免费抠图机会
+# 新增一个处理函数：用户加入群组时 +1 次数
+async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_member = update.chat_member
+    if chat_member.new_chat_member.status in ["member", "administrator", "creator"]:
+        user_id = chat_member.new_chat_member.user.id
+        # 只给新加入的用户 +1 次（避免重复加）
+        if user_id not in user_usage:
+            user_usage[user_id] = 0
+        user_usage[user_id] += 1  # +1 次机会
+        await context.bot.send_message(
+            chat_id=chat_member.chat.id,
+            text=f"欢迎Echo AI！🎉 已为你增加 1 次免费抠图机会～\n当前剩余：{MAX_FREE_TIMES - user_usage[user_id] + 1} 次"
+        )
+
+# 注册这个 handler
+app.add_handler(ChatMemberHandler(welcome_new_member, ChatMemberHandler.CHAT_MEMBER))
+
+
+
+
+
+
+
+    
     # ====== 点击「升级会员」=====
     if text == "💎 升级会员":
         await update.message.reply_text("💎 会员功能即将上线\n\n"
@@ -72,7 +101,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 如果超过免费次数，直接拦截
     if user_usage[user_id] >= MAX_FREE_TIMES:
         await update.message.reply_text("🚫 今日免费次数已用完\n\n"
-                                        "👉 关注频道即可继续使用更多次数：\n" + CHANNEL_LINK)
+                                        "👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK)
         return  # ⛔️ 不再抠图
 
     # 使用次数 +1
