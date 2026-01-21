@@ -63,33 +63,47 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                     "📸 直接发送图片即可抠图",
                                     reply_markup=reply_markup)
 
-
+group_members = set()  # 存 user_id
 # 加入群组增加 1 次免费抠图机会
 # 新增一个处理函数：用户加入群组时 +1 次数
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_member = update.chat_member
     user = chat_member.new_chat_member.user
 
-    # 只处理新加入成员
     if chat_member.new_chat_member.status == "member":
         user_id = user.id
+
+        # 标记用户已经加入群组
+        group_members.add(user_id)
 
         # 初始化次数
         if user_id not in user_usage:
             user_usage[user_id] = 0
 
-        # 增加一次机会
+        # 增加一次免费机会
         user_usage[user_id] += 1
 
         try:
             await context.bot.send_message(
-                chat_id=user_id,  # 私聊用户
+                chat_id=user_id,
                 text=f"🎉 欢迎加入 Echo AI 群组！\n已为你增加 1 次免费抠图机会～\n今日剩余次数：{MAX_FREE_TIMES - user_usage[user_id] if user_usage[user_id] < MAX_FREE_TIMES else 0}"
             )
         except Exception as e:
-            # 用户可能没启动 Bot，无法发送私聊
             print(f"无法私聊用户 {user_id}: {e}")
         
+if user_usage[user_id] >= MAX_FREE_TIMES:
+    if user_id in group_members:
+        # 已经在群里 → 提示购买会员/次数
+        await update.message.reply_text(
+            "🚫 今日免费次数已用完\n\n💎 你已在 Echo AI 群组，可通过购买会员获得更多抠图次数"
+        )
+    else:
+        # 未加入群组 → 提示加群
+        await update.message.reply_text(
+            "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
+        )
+    return
+
 
 
 # ====== 四、处理图片消息（核心功能） ======
