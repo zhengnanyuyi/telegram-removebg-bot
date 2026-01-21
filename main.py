@@ -1,200 +1,186 @@
 # ====== 一、导入库 ======
-from telegram import Update
-from telegram.ext import ApplicationBuilder, MessageHandler, ContextTypes, filters
-from telegram import ReplyKeyboardMarkup
-import requests  # 用来请求 remove.bg API
-import os  # 删除临时文件
-from telegram.ext import ChatMemberHandler
+import os
+import json
+import tempfile
+import traceback
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import (
+    Application,
+    MessageHandler,
+    ContextTypes,
+    filters,
+    CommandHandler,
+    ChatMemberHandler
+)
+import requests
 
+# ====== 二、环境变量读取（必须在平台设置 Variables） ======
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY")
+CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/EchoAICut")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")# ====== 机器人Token
-REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY") # ====== remove.bg API KEY
-CHANNEL_LINK = os.getenv("CHANNEL_LINK") # ====== 频道链接
+if not BOT_TOKEN or not REMOVE_BG_API_KEY:
+    print("错误：缺少 BOT_TOKEN 或 REMOVE_BG_API_KEY 环境变量！")
+    exit(1)
 
-# ====== 频道链接（用户超过次数时引导关注） ======
-CHANNEL_LINK = "t.me/EchoAICut"
-
-# ====== 使用次数限制配置 ======
+# ====== 三、配置 ======
 MAX_FREE_TIMES = 3
+USAGE_FILE = "/tmp/user_usage.json"   # 使用 /tmp/ 持久化（重启后保留）
 
-# 用字典记录：{user_id: 使用次数}
-user_usage = {}
-
-# ====== 二、配置区 ======
-
-# ⚠️ 换成你【新的】Telegram Bot Token
-BOT_TOKEN = "8538021469:AAFziET1hRmGKCb_EP6m-7h8ZZnaNz_MCgY"
-# ⚠️ 换成你自己的 remove.bg API Key
-REMOVE_BG_API_KEY = "A8Tiwh7HpUhYe3Q3qtBbQfyi"
-
-
-# ====== 三、处理文字消息 ======
-async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    text = update.message.text
-
-    # ====== 按钮菜单 ======
-    keyboard = [["✂️ 抠图"], ["📊 今日剩余次数"], ["💎 升级会员"]]
-
-    reply_markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
-
-    # ====== 点击「今日剩余次数」=====
-    if text == "📊 今日剩余次数":
-        used = user_usage.get(user_id, 0)
-        remaining = MAX_FREE_TIMES - used
-        if remaining < 0:
-            remaining = 0
-        await update.message.reply_text(f"🚫 今日免费次数已用完（剩余 {remaining} 次）\n\n"
-                                        "👉 加入Echo AI即可继续使用更多次数：\n" + CHANNEL_LINK)
-        return
-
-
-    
-    # ====== 点击「升级会员」=====
-    if text == "💎 升级会员":
-        await update.message.reply_text("💎 会员功能即将上线\n\n"
-                                        "✅ 无限抠图\n"
-                                        "✅ 高清输出\n"
-                                        "📩 私聊管理员了解")
-        return
-
-    # ====== 默认欢迎消息 ======
-    await update.message.reply_text("欢迎使用智能抠图 Bot 👋\n\n"
-                                    "📸 直接发送图片即可抠图",
-                                    reply_markup=reply_markup)
-
-group_members = set()  # 存 user_id
-# 加入群组增加 1 次免费抠图机会
-# 新增一个处理函数：用户加入群组时 +1 次数
-async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_member = update.chat_member
-    user = chat_member.new_chat_member.user
-
-    if chat_member.new_chat_member.status == "member":
-        user_id = user.id
-
-        # 标记用户已经加入群组
-        group_members.add(user_id)
-
-        # 初始化次数
-        if user_id not in user_usage:
-            user_usage[user_id] = 0
-
-        # 增加一次免费机会
-        user_usage[user_id] += 1
-
+# 加载使用次数
+def load_usage():
+    if os.path.exists(USAGE_FILE):
         try:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text=f"🎉 欢迎加入 Echo AI 群组！\n已为你增加 1 次免费抠图机会～\n今日剩余次数：{MAX_FREE_TIMES - user_usage[user_id] if user_usage[user_id] < MAX_FREE_TIMES else 0}"
-            )
-        except Exception as e:
-            print(f"无法私聊用户 {user_id}: {e}")
+            with open(USAGE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
 
+def save_usage(usage_dict):
+    try:
+        with open(USAGE_FILE, "w", encoding="utf-8") as f:
+            json.dump(usage_dict, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"保存使用次数失败: {e}")
 
-# =====添加按钮功能
+user_usage = load_usage()
+
+# 按钮键盘
+MAIN_KEYBOARD = [["✂️ 抠图"], ["📊 今日剩余次数"], ["💎 升级会员"]]
+
+# ====== 四、处理器 ======
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    keyboard = [["✂️ 抠图"], ["📊 今日剩余次数"], ["💎 升级会员"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True)
     await update.message.reply_text(
-        "欢迎使用智能抠图 Bot 👋\n\n📸 直接发送图片即可抠图\n请选择下面按钮操作：",
+        "欢迎使用智能抠图 Bot 👋\n\n"
+        "📸 直接发送图片即可自动抠图（透明背景）\n"
+        "免费用户每天限 3 次，加入群组可额外 +1 次！",
         reply_markup=reply_markup
     )
 
+async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.message.from_user.id)  # 用 str 做 key，避免 json 问题
+    text = update.message.text.strip()
 
-# ====== 四、处理图片消息（核心功能） ======
+    if text == "📊 今日剩余次数":
+        used = user_usage.get(user_id, 0)
+        remaining = max(0, MAX_FREE_TIMES - used)
+        msg = f"今日已使用 {used} 次，剩余 {remaining} 次"
+        if remaining == 0:
+            msg += f"\n\n免费次数已用完！\n加入群组可额外获得 1 次：{CHANNEL_LINK}"
+        await update.message.reply_text(msg)
+        return
+
+    if text == "💎 升级会员":
+        await update.message.reply_text(
+            "💎 会员功能即将上线！\n\n"
+            "即将解锁：\n"
+            "✅ 无限抠图\n"
+            "✅ 更高清输出\n"
+            "✅ 优先处理\n\n"
+            "私聊管理员了解详情～"
+        )
+        return
+
+    # 其他文字 → 引导发图或用按钮
+    reply_markup = ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True)
+    await update.message.reply_text("请直接发送照片，或使用下方按钮操作～", reply_markup=reply_markup)
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ====== 0️⃣ 使用次数限制（必须最先） ======
-    user_id = update.message.from_user.id
+    user_id = str(update.message.from_user.id)
 
-    # 初始化次数
- 
+    # 初始化 & 检查次数
     if user_id not in user_usage:
         user_usage[user_id] = 0
 
-    # 超过免费次数 → 判断是否在群里
     if user_usage[user_id] >= MAX_FREE_TIMES:
         try:
-            member = await context.bot.get_chat_member(chat_id="@EchoAICut", user_id=user_id)
+            member = await context.bot.get_chat_member(chat_id="@EchoAICut", user_id=int(user_id))
             if member.status in ["member", "administrator", "creator"]:
-                await update.message.reply_text(
-                    "🚫 今日免费次数已用完\n\n✅ 你已在 Echo AI 群组，可通过购买会员获得更多抠图次数"
+                text = "🚫 今日免费次数已用完\n\n✅ 你已在 Echo AI 群组，可购买会员无限使用"
+            else:
+                text = f"🚫 今日免费次数已用完\n\n加入群组额外 +1 次：{CHANNEL_LINK}"
+        except:
+            text = f"🚫 今日免费次数已用完\n\n加入群组额外 +1 次：{CHANNEL_LINK}"
+        await update.message.reply_text(text)
+        return
+
+    # 使用 +1 并保存
+    user_usage[user_id] += 1
+    save_usage(user_usage)
+
+    await update.message.reply_text("⏳ 正在智能抠图，请稍等 3~8 秒...")
+
+    try:
+        photo = update.message.photo[-1]
+        file = await photo.get_file()
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "input.jpg")
+            output_path = os.path.join(tmpdir, "output.png")
+
+            await file.download_to_drive(input_path)
+
+            response = requests.post(
+                "https://api.remove.bg/v1.0/removebg",
+                files={"image_file": open(input_path, "rb")},
+                data={"size": "auto"},
+                headers={"X-Api-Key": REMOVE_BG_API_KEY},
+                timeout=90
+            )
+
+            if response.status_code == 200:
+                with open(output_path, "wb") as out:
+                    out.write(response.content)
+
+                reply_markup = ReplyKeyboardMarkup([["📊 今日剩余次数"], ["💎 升级会员"]], resize_keyboard=True)
+                await update.message.reply_photo(
+                    photo=open(output_path, "rb"),
+                    caption=f"✅ 抠图完成！（PNG 透明背景）\n今日剩余 {max(0, MAX_FREE_TIMES - user_usage[user_id])} 次",
+                    reply_markup=reply_markup
                 )
             else:
                 await update.message.reply_text(
-                    "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
+                    f"❌ 抠图失败（状态码 {response.status_code}）\n可能是 API 额度问题或图片太复杂，请稍后再试"
                 )
-        except Exception:
-            await update.message.reply_text(
-                "🚫 今日免费次数已用完\n\n👉 加入Echo AI即可获得额外 1 次机会：\n" + CHANNEL_LINK
+
+    except Exception as e:
+        print(f"用户 {user_id} 抠图异常: {type(e).__name__} - {str(e)}")
+        traceback.print_exc()
+        await update.message.reply_text("⚠️ 服务器忙碌中，请稍后再试～")
+
+    # TemporaryDirectory 会自动清理，无需手动 remove
+
+async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_member = update.chat_member
+    if chat_member.new_chat_member.status == "member":
+        user_id = str(chat_member.new_chat_member.user.id)
+        if user_id not in user_usage:
+            user_usage[user_id] = 0
+        user_usage[user_id] += 1
+        save_usage(user_usage)
+
+        remaining = max(0, MAX_FREE_TIMES - user_usage[user_id])
+        try:
+            await context.bot.send_message(
+                chat_id=chat_member.new_chat_member.user.id,
+                text=f"🎉 欢迎加入 Echo AI 群组！\n已为你增加 1 次免费抠图机会～\n今日剩余：{remaining} 次"
             )
-        return
+        except Exception as e:
+            print(f"无法私聊 {user_id}: {e}")
 
-    # ✅ 次数有效 → 增加一次使用
-    user_usage[user_id] += 1
+# ====== 五、启动 ======
+def main():
+    app = Application.builder().token(BOT_TOKEN).build()
 
-    # 提示用户
-    await update.message.reply_text("⏳ 正在抠图，请稍等 3~5 秒...")
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
+    app.add_handler(ChatMemberHandler(welcome_new_member, ChatMemberHandler.CHAT_MEMBER))
 
-    # 1️⃣ 获取用户发送的最高分辨率图片
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
+    print("🤖 Bot 启动成功，正在轮询...")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-    input_path = "input.jpg"
-    output_path = "output.png"
-
-    # 2️⃣ 下载图片到本地
-    await file.download_to_drive(input_path)
-
-    try:
-    # 3️⃣ 调用 remove.bg API
-    response = requests.post(
-        "https://api.remove.bg/v1.0/removebg",
-        files={"image_file": open(input_path, "rb")},
-        data={"size": "auto"},
-        headers={"X-Api-Key": REMOVE_BG_API_KEY},
-        timeout=60
-    )
-
-    # 4️⃣ 判断是否成功
-  if response.status_code == 200:
-    # 保存抠图结果
-    with open(output_path, "wb") as out:
-        out.write(response.content)
-
-    # 发送结果给用户
-    keyboard = [["📊 今日剩余次数"], ["💎 升级会员"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_photo(
-        photo=open(output_path, "rb"),
-        caption="✅ 抠图完成（PNG 透明背景）",
-        reply_markup=reply_markup
-    )
-else:
-    await update.message.reply_text("❌ 抠图失败，可能是额度用完了")
-
-except Exception as e:
-    await update.message.reply_text("⚠️ 出现错误，请稍后再试")
-
-
-# 6️⃣ 清理临时文件
-if os.path.exists(input_path):
-    os.remove(input_path)
-if os.path.exists(output_path):
-    os.remove(output_path)
-
-
-# ====== 五、创建 Bot 应用 ======
-#==app = ApplicationBuilder().token(BOT_TOKEN).build()
-from telegram.ext import Application  # 确保导入 Application（你已经导入了 telegram.ext，但保险起见加这一行）
-app = Application.builder().token(BOT_TOKEN).build()
-# ====== 六、注册处理器 ======
-app.add_handler(CommandHandler("start", start))# 注册开始按钮
-app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
-#=== 注册这个 handler
-app.add_handler(ChatMemberHandler(welcome_new_member, ChatMemberHandler.CHAT_MEMBER))
-# ====== 七、启动 Bot ======
-print("🤖 Bot 正在运行...")
-app.run_polling()
+if __name__ == "__main__":
+    main()
