@@ -149,7 +149,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
     # 3️⃣ 调用 remove.bg API
-        response = requests.post(
+    response = requests.post(
         "https://api.remove.bg/v1.0/removebg",
         files={"image_file": open(input_path, "rb")},
         data={"size": "auto"},
@@ -158,33 +158,31 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     # 4️⃣ 判断是否成功
-    if response.status_code == 200:
-        # 保存抠图结果
-        with open(output_path, "wb") as out:
-            out.write(response.content)
+  if response.status_code == 200:
+    # 保存抠图结果
+    with open(output_path, "wb") as out:
+        out.write(response.content)
 
-        # 5️⃣ 把抠图结果发回用户
-        keyboard = [["📊 今日剩余次数"], ["💎 升级会员"]]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        await update.message.reply_photo(
-            photo=open(output_path, "rb"),
-            caption="✅ 抠图完成（PNG 透明背景）",
-            reply_markup=reply_markup
-        )
-    else:
-        await update.message.reply_text("❌ 抠图失败，可能是额度用完了")
-
-except Exception as e:
-    await update.message.reply_text("⚠️ 出现错误，请稍后再试")
+    # 发送结果给用户
+    keyboard = [["📊 今日剩余次数"], ["💎 升级会员"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    await update.message.reply_photo(
+        photo=open(output_path, "rb"),
+        caption="✅ 抠图完成（PNG 透明背景）",
+        reply_markup=reply_markup
+    )
+else:
+    await update.message.reply_text("❌ 抠图失败，可能是额度用完了")
 
 except Exception as e:
     await update.message.reply_text("⚠️ 出现错误，请稍后再试")
 
-    # 6️⃣ 清理临时文件
-    if os.path.exists(input_path):
-        os.remove(input_path)
-    if os.path.exists(output_path):
-        os.remove(output_path)
+
+# 6️⃣ 清理临时文件
+if os.path.exists(input_path):
+    os.remove(input_path)
+if os.path.exists(output_path):
+    os.remove(output_path)
 
 
 # ====== 五、创建 Bot 应用 ======
