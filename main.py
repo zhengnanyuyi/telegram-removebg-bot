@@ -149,7 +149,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
     # 3️⃣ 调用 remove.bg API
-    response = requests.post(
+        response = requests.post(
         "https://api.remove.bg/v1.0/removebg",
         files={"image_file": open(input_path, "rb")},
         data={"size": "auto"},
@@ -173,6 +173,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await update.message.reply_text("❌ 抠图失败，可能是额度用完了")
+
+except Exception as e:
+    await update.message.reply_text("⚠️ 出现错误，请稍后再试")
 
 except Exception as e:
     await update.message.reply_text("⚠️ 出现错误，请稍后再试")
