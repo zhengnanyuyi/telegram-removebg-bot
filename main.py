@@ -90,8 +90,17 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
         except Exception as e:
             print(f"无法私聊用户 {user_id}: {e}")
-        
 
+
+# =====添加按钮功能
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    keyboard = [["✂️ 抠图"], ["📊 今日剩余次数"], ["💎 升级会员"]]
+    reply_markup = ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    await update.message.reply_text(
+        "欢迎使用智能抠图 Bot 👋\n\n📸 直接发送图片即可抠图\n请选择下面按钮操作：",
+        reply_markup=reply_markup
+    )
 
 
 # ====== 四、处理图片消息（核心功能） ======
@@ -139,27 +148,34 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_drive(input_path)
 
     try:
-        # 3️⃣ 调用 remove.bg API
-        response = requests.post("https://api.remove.bg/v1.0/removebg",
-                                 files={"image_file": open(input_path, "rb")},
-                                 data={"size": "auto"},
-                                 headers={"X-Api-Key": REMOVE_BG_API_KEY},
-                                 timeout=60)
+    # 3️⃣ 调用 remove.bg API
+    response = requests.post(
+        "https://api.remove.bg/v1.0/removebg",
+        files={"image_file": open(input_path, "rb")},
+        data={"size": "auto"},
+        headers={"X-Api-Key": REMOVE_BG_API_KEY},
+        timeout=60
+    )
 
-        # 4️⃣ 判断是否成功
-        if response.status_code == 200:
-            # 保存抠图结果
-            with open(output_path, "wb") as out:
-                out.write(response.content)
+    # 4️⃣ 判断是否成功
+    if response.status_code == 200:
+        # 保存抠图结果
+        with open(output_path, "wb") as out:
+            out.write(response.content)
 
-            # 5️⃣ 把抠图结果发回用户
-            await update.message.reply_photo(photo=open(output_path, "rb"),
-                                             caption="✅ 抠图完成（PNG 透明背景）")
-        else:
-            await update.message.reply_text("❌ 抠图失败，可能是额度用完了")
+        # 5️⃣ 把抠图结果发回用户
+        keyboard = [["📊 今日剩余次数"], ["💎 升级会员"]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_photo(
+            photo=open(output_path, "rb"),
+            caption="✅ 抠图完成（PNG 透明背景）",
+            reply_markup=reply_markup
+        )
+    else:
+        await update.message.reply_text("❌ 抠图失败，可能是额度用完了")
 
-    except Exception as e:
-        await update.message.reply_text("⚠️ 出现错误，请稍后再试")
+except Exception as e:
+    await update.message.reply_text("⚠️ 出现错误，请稍后再试")
 
     # 6️⃣ 清理临时文件
     if os.path.exists(input_path):
@@ -171,9 +187,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ====== 五、创建 Bot 应用 ======
 #==app = ApplicationBuilder().token(BOT_TOKEN).build()
 from telegram.ext import Application  # 确保导入 Application（你已经导入了 telegram.ext，但保险起见加这一行）
-
 app = Application.builder().token(BOT_TOKEN).build()
 # ====== 六、注册处理器 ======
+app.add_handler(CommandHandler("start", start))# 注册开始按钮
 app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
 #=== 注册这个 handler
