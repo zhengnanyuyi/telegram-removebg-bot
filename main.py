@@ -14,6 +14,7 @@ from telegram.ext import (
     ContextTypes,
     filters
 )
+# ✅ 正确：在 handle_photo 里
 from rembg import remove
 
 # ================================
