@@ -228,7 +228,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-except Exception as e:
+    except Exception as e:
     import traceback
     traceback_str = traceback.format_exc()
     print("🚨 异常信息:\n", traceback_str)  # 打印到服务器日志
