@@ -168,48 +168,53 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("⏳ 正在抠图，请稍等 3~8 秒...")
 
-    try:
-        photo = update.message.photo[-1]
-        file = await photo.get_file()
+   try:
+    # 这里是原来的抠图逻辑
+    photo = update.message.photo[-1]
+    file = await photo.get_file()
 
-        with tempfile.TemporaryDirectory() as tmp:
-            input_path = os.path.join(tmp, "input.jpg")
-            output_path = os.path.join(tmp, "output.png")
+    with tempfile.TemporaryDirectory() as tmp:
+        input_path = os.path.join(tmp, "input.jpg")
+        output_path = os.path.join(tmp, "output.png")
 
-            await file.download_to_drive(input_path)
+        await file.download_to_drive(input_path)
 
-            # **这里打印原图尺寸**
-            with Image.open(input_path) as img:
-                print(f"📥 原图尺寸: {img.width} x {img.height}")
+        # 打印原图尺寸
+        from PIL import Image
+        with Image.open(input_path) as img:
+            print(f"📥 原图尺寸: {img.width} x {img.height}")
 
-            response = requests.post(
-                "https://api.remove.bg/v1.0/removebg",
-                files={"image_file": open(input_path, "rb")},
-                data={"size": "auto"},
-                headers={"X-Api-Key": REMOVE_BG_API_KEY},
-                timeout=60
+        response = requests.post(
+            "https://api.remove.bg/v1.0/removebg",
+            files={"image_file": open(input_path, "rb")},
+            data={"size": "auto"},
+            headers={"X-Api-Key": REMOVE_BG_API_KEY},
+            timeout=60
+        )
+
+        if response.status_code == 200:
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+
+            # 打印输出尺寸
+            with Image.open(output_path) as out:
+                print(f"📤 输出尺寸: {out.width} x {out.height}")
+
+            remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
+            await update.message.reply_photo(
+                photo=open(output_path, "rb"),
+                caption=f"✅ 抠图完成\n今日剩余 {remaining} 次"
             )
+        else:
+            await update.message.reply_text("❌ 抠图失败，请稍后再试")
 
-            if response.status_code == 200:
-                with open(output_path, "wb") as f:
-                    f.write(response.content)
-
-                # **这里打印输出图尺寸**
-                with Image.open(output_path) as out:
-                    print(f"📤 输出尺寸: {out.width} x {out.height}")
-
-                remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
-
-                await update.message.reply_photo(
-                    photo=open(output_path, "rb"),
-                    caption=f"✅ 抠图完成\n今日剩余 {remaining} 次"
-                )
-            else:
-                await update.message.reply_text("❌ 抠图失败，请稍后再试")
-
-    except Exception as e:
-    traceback.print_exc()  # 已有，打印完整堆栈
-    await update.message.reply_text(f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}")
+except Exception as e:
+    import traceback
+    traceback_str = traceback.format_exc()
+    print("🚨 异常信息:\n", traceback_str)  # 打印到服务器日志
+    await update.message.reply_text(
+        f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}"
+    )
 
 # ================================
 # 八、加群奖励（只给一次）
