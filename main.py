@@ -207,9 +207,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text("❌ 抠图失败，请稍后再试")
 
-    except Exception:
-        traceback.print_exc()
-        await update.message.reply_text("⚠️ 系统异常，请稍后再试")
+    except Exception as e:
+    traceback.print_exc()  # 已有，打印完整堆栈
+    await update.message.reply_text(f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}")
 
 # ================================
 # 八、加群奖励（只给一次）
