@@ -7,6 +7,8 @@ import json
 import tempfile
 import traceback
 import requests
+from PIL import Image
+import torch
 from realesrgan import RealESRGAN
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
