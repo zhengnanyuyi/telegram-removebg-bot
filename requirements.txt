@@ -4,8 +4,6 @@ Pillow==10.4.0
 aiohttp
 
 # AI 相关
-torch==2.10.1
-torchvision==0.25.1
 
 # 抠图（必须带 onnxruntime）
 rembg[cpu]
