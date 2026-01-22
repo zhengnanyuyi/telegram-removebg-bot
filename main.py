@@ -178,6 +178,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ 正在抠图，请稍等 3~8 秒...")
 
     try:
+        # 获取文件
         photo = update.message.photo[-1]
         file = await photo.get_file()
 
@@ -191,13 +192,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with Image.open(input_path) as img:
                 print(f"📥 原图尺寸: {img.width} x {img.height}")
 
-            response = requests.post(
-                "https://api.remove.bg/v1.0/removebg",
-                files={"image_file": open(input_path, "rb")},
-                data={"size": "auto"},
-                headers={"X-Api-Key": REMOVE_BG_API_KEY},
-                timeout=60
-            )
+            # 调用 remove.bg
+            with open(input_path, "rb") as f:
+                response = requests.post(
+                    "https://api.remove.bg/v1.0/removebg",
+                    files={"image_file": f},
+                    data={"size": "auto"},
+                    headers={"X-Api-Key": REMOVE_BG_API_KEY},
+                    timeout=60
+                )
 
             if response.status_code == 200:
                 with open(output_path, "wb") as f:
@@ -216,11 +219,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ 抠图失败，请稍后再试")
 
     except Exception as e:
+        # 打印完整异常堆栈
         traceback_str = traceback.format_exc()
         print("🚨 异常信息:\n", traceback_str)
         await update.message.reply_text(
             f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}"
         )
+
 
 
 except Exception as e:
