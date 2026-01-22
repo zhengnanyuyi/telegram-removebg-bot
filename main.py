@@ -229,12 +229,12 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     except Exception as e:
-    import traceback
-    traceback_str = traceback.format_exc()
-    print("🚨 异常信息:\n", traceback_str)  # 打印到服务器日志
-    await update.message.reply_text(
-        f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}"
-    )
+        import traceback
+        traceback_str = traceback.format_exc()
+        print("🚨 异常信息:\n", traceback_str)  # 打印到服务器日志
+        await update.message.reply_text(
+            f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}"
+        )
 
 # ================================
 # 八、加群奖励（只给一次）
