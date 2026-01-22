@@ -1,15 +1,5 @@
 python-telegram-bot==22.5
 requests==2.32.3
 Pillow==10.4.0
-aiohttp
-
-# AI 相关
-
-# 抠图（必须带 onnxruntime）
-rembg[cpu]
-
-# 超分
-realesrgan
-
-# onnx 推理引擎（rembg 真正依赖的东西）
-onnxruntime
+aiohttp==3.13.3
+torch==2.10.0
