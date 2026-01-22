@@ -2,7 +2,7 @@ python-telegram-bot==22.5
 requests==2.32.3
 Pillow==10.4.0
 aiohttp
-torch==2.10.0
-torchvision==0.15.1
+torch==2.10.1
+torchvision==0.25.1
 realesrgan
 # rembg>=2.0.0  # 暂时注释
