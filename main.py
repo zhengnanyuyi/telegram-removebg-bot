@@ -1,5 +1,5 @@
 # ================================
-# Echo AI 抠图 Bot（完整稳定版）
+# Echo AI 抠图 Bot（Railway 稳定版）
 # ================================
 
 import os
@@ -7,9 +7,11 @@ import json
 import tempfile
 import traceback
 import requests
-from PIL import Image
+
 import torch
+from PIL import Image
 from realesrgan import RealESRGAN
+
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -21,7 +23,7 @@ from telegram.ext import (
 )
 
 # ================================
-# 一、环境变量（在 Railway 设置）
+# 一、环境变量
 # ================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 REMOVE_BG_API_KEY = os.getenv("REMOVE_BG_API_KEY")
@@ -34,10 +36,10 @@ if not BOT_TOKEN or not REMOVE_BG_API_KEY:
 # 二、基础配置
 # ================================
 MAX_FREE_TIMES = 3
-USAGE_FILE = "/tmp/user_usage.json"  # Railway 可用
+USAGE_FILE = "/tmp/user_usage.json"  # Railway 可写目录
 
 # ================================
-# 三、用户数据读写
+# 三、用户数据
 # ================================
 def load_usage():
     if os.path.exists(USAGE_FILE):
@@ -52,18 +54,12 @@ def save_usage(data):
     with open(USAGE_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False)
 
-# 用户数据结构：
-# user_usage[user_id] = {
-#   "count": 已使用次数,
-#   "bonus_granted": 是否已给过加群奖励
-# }
 user_usage = load_usage()
 
 # ================================
 # 四、按钮
 # ================================
 MAIN_KEYBOARD = [
-    ["✂️ 抠图"],
     ["📊 今日剩余次数"],
     ["💎 升级会员"]
 ]
@@ -81,21 +77,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ================================
-# 六、文字按钮处理
+# 六、文字按钮
 # ================================
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
     text = update.message.text.strip()
 
-    # 初始化用户
     if user_id not in user_usage:
-        user_usage[user_id] = {
-            "count": 0,
-            "bonus_granted": False
-        }
+        user_usage[user_id] = {"count": 0, "bonus_granted": False}
         save_usage(user_usage)
 
-    # 今日剩余次数
     if text == "📊 今日剩余次数":
         used = user_usage[user_id]["count"]
         remaining = max(0, MAX_FREE_TIMES - used)
@@ -104,74 +95,47 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if remaining == 0:
             if user_usage[user_id]["bonus_granted"]:
-                msg += (
-                    "\n\n💎 会员功能内测中\n"
-                    "📌 权益：\n"
-                    "• 无限抠图\n"
-                    "• 更快处理\n"
-                    "• 高清输出\n\n"
-                    "👉 回复「会员」加入候补"
-                )
+                msg += "\n\n💎 会员功能内测中\n👉 回复「会员」加入候补"
             else:
-                msg += f"\n\n🎁 加入群组可解锁 +1 次：\n{CHANNEL_LINK}"
+                msg += f"\n\n🎁 加群解锁 +1 次：\n{CHANNEL_LINK}"
 
         await update.message.reply_text(msg)
         return
 
-    # 升级会员
     if text == "💎 升级会员":
         await update.message.reply_text(
             "💎 会员功能内测中\n\n"
-            "📌 权益：\n"
             "• 无限抠图\n"
             "• 更快处理\n"
             "• 高清输出\n\n"
-            "👉 回复「会员」加入候补名单"
+            "👉 回复「会员」加入候补"
         )
         return
 
-    await update.message.reply_text(
-        "请直接发送图片，或使用下方按钮👇",
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True)
-    )
+    await update.message.reply_text("请直接发送图片 📸")
 
 # ================================
-# 七、图片抠图核心逻辑
+# 七、图片处理
 # ================================
-
-# ================================
-# 七、图片抠图核心逻辑
-# ================================
-async def handle_photo(update, context):
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
 
-    # 初始化用户
     if user_id not in user_usage:
-        user_usage[user_id] = {
-            "count": 0,
-            "bonus_granted": False
-        }
+        user_usage[user_id] = {"count": 0, "bonus_granted": False}
 
-    # 次数检查
     if user_usage[user_id]["count"] >= MAX_FREE_TIMES:
         if user_usage[user_id]["bonus_granted"]:
-            await update.message.reply_text(
-                "🚫 今日免费次数已用完\n\n"
-                "💎 会员功能内测中\n"
-                "👉 回复「会员」加入候补"
-            )
+            await update.message.reply_text("🚫 今日次数已用完\n💎 回复「会员」了解升级")
         else:
             await update.message.reply_text(
-                f"🚫 今日免费次数已用完\n\n"
-                f"🎁 加群即可解锁 +1 次：\n{CHANNEL_LINK}"
+                f"🚫 今日次数已用完\n🎁 加群解锁 +1 次：\n{CHANNEL_LINK}"
             )
         return
 
-    # 使用次数 +1
     user_usage[user_id]["count"] += 1
     save_usage(user_usage)
 
-    await update.message.reply_text("⏳ 正在抠图并高清增强，请稍等 5~15 秒...")
+    await update.message.reply_text("⏳ 正在抠图并高清增强，请稍等...")
 
     try:
         photo = update.message.photo[-1]
@@ -184,13 +148,7 @@ async def handle_photo(update, context):
 
             await file.download_to_drive(input_path)
 
-            # 打印原图尺寸
-            with Image.open(input_path) as img:
-                print(f"📥 原图尺寸: {img.width} x {img.height}")
-
-            # ================================
-            # Step 1: 调用 remove.bg 抠图
-            # ================================
+            # remove.bg
             response = requests.post(
                 "https://api.remove.bg/v1.0/removebg",
                 files={"image_file": open(input_path, "rb")},
@@ -199,73 +157,49 @@ async def handle_photo(update, context):
                 timeout=60
             )
 
-            if response.status_code == 200:
-                with open(output_path, "wb") as f:
-                    f.write(response.content)
-            else:
+            if response.status_code != 200:
                 await update.message.reply_text("❌ 抠图失败，请稍后再试")
                 return
 
-            # ================================
-            # Step 2: 自动下载 Real-ESRGAN 权重
-            # ================================
-            WEIGHTS_PATH = "/tmp/RealESRGAN_x2.pth"
-            if not os.path.exists(WEIGHTS_PATH):
+            with open(output_path, "wb") as f:
+                f.write(response.content)
+
+            # Real-ESRGAN
+            weights = "/tmp/RealESRGAN_x2.pth"
+            if not os.path.exists(weights):
                 url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/RealESRGAN_x2.pth"
                 r = requests.get(url, stream=True)
-                with open(WEIGHTS_PATH, "wb") as f:
-                    for chunk in r.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                print("✅ 权重下载完成")
+                with open(weights, "wb") as f:
+                    for c in r.iter_content(8192):
+                        f.write(c)
 
-            # ================================
-            # Step 3: 高清增强
-            # ================================
             device = "cuda" if torch.cuda.is_available() else "cpu"
             model = RealESRGAN(device, scale=2)
-            model.load_weights(WEIGHTS_PATH)
+            model.load_weights(weights)
 
             img = Image.open(output_path).convert("RGB")
-            enhanced_img = model.predict(img)
-            enhanced_img.save(enhanced_path)
-
-            # 打印输出尺寸
-            with Image.open(enhanced_path) as out:
-                print(f"📤 输出尺寸: {out.width} x {out.height}")
+            out = model.predict(img)
+            out.save(enhanced_path)
 
             remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
 
-            # 发送高清抠图结果
             await update.message.reply_photo(
                 photo=open(enhanced_path, "rb"),
-                caption=f"✅ 高清抠图完成\n今日剩余 {remaining} 次"
+                caption=f"✅ 抠图完成\n今日剩余 {remaining} 次"
             )
 
-    except Exception as e:
+    except Exception:
         traceback.print_exc()
         await update.message.reply_text("⚠️ 系统异常，请稍后再试")
 
-
-
-    except Exception as e:
-        import traceback
-        traceback_str = traceback.format_exc()
-        print("🚨 异常信息:\n", traceback_str)  # 打印到服务器日志
-        await update.message.reply_text(
-            f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}"
-        )
-
 # ================================
-# 八、加群奖励（只给一次）
+# 八、加群奖励
 # ================================
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.chat_member.new_chat_member.user.id)
 
     if user_id not in user_usage:
-        user_usage[user_id] = {
-            "count": 0,
-            "bonus_granted": False
-        }
+        user_usage[user_id] = {"count": 0, "bonus_granted": False}
 
     if user_usage[user_id]["bonus_granted"]:
         return
@@ -277,7 +211,7 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
     try:
         await context.bot.send_message(
             chat_id=user_id,
-            text="🎉 欢迎加入 Echo AI！\n已解锁 +1 次免费抠图"
+            text="🎉 欢迎加入 Echo AI！已解锁 +1 次抠图"
         )
     except:
         pass
