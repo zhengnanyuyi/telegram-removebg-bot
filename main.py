@@ -136,6 +136,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================================
 # 七、图片抠图核心逻辑
 # ================================
+
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
 
@@ -177,6 +178,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await file.download_to_drive(input_path)
 
+            # **这里打印原图尺寸**
+            with Image.open(input_path) as img:
+                print(f"📥 原图尺寸: {img.width} x {img.height}")
+
             response = requests.post(
                 "https://api.remove.bg/v1.0/removebg",
                 files={"image_file": open(input_path, "rb")},
@@ -188,6 +193,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if response.status_code == 200:
                 with open(output_path, "wb") as f:
                     f.write(response.content)
+
+                # **这里打印输出图尺寸**
+                with Image.open(output_path) as out:
+                    print(f"📤 输出尺寸: {out.width} x {out.height}")
 
                 remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
 
