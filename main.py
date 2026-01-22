@@ -6,6 +6,7 @@ import os
 import json
 import tempfile
 from PIL import Image
+import asyncio
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -88,8 +89,6 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📸 请直接发送图片")
 
 # ================================
-# 图片处理
-# ================================
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.message.from_user.id)
 
@@ -116,8 +115,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await file.download_to_drive(input_path)
 
+        # 🔑 这里改成异步线程池执行 remove
+        loop = asyncio.get_running_loop()
         with open(input_path, "rb") as i:
-            result = remove(i.read())
+            input_bytes = i.read()
+
+        result = await loop.run_in_executor(
+            None,      # 使用默认线程池
+            remove,    # 传入阻塞函数
+            input_bytes
+        )
 
         with open(output_path, "wb") as o:
             o.write(result)
@@ -129,7 +136,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             caption=f"✅ 抠图完成\n今日剩余 {remaining} 次"
         )
 
-# ================================
 # 启动
 # ================================
 def main():
