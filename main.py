@@ -7,7 +7,7 @@ import json
 import tempfile
 import traceback
 import requests
-
+from realesrgan import RealESRGAN
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -140,13 +140,7 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ================================
 # 七、图片抠图核心逻辑
 # ================================
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    import traceback
-    from PIL import Image
-    import tempfile
-    import os
-    import requests
-
+async def handle_photo(update, context):
     user_id = str(update.message.from_user.id)
 
     # 初始化用户
@@ -175,16 +169,16 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_usage[user_id]["count"] += 1
     save_usage(user_usage)
 
-    await update.message.reply_text("⏳ 正在抠图，请稍等 3~8 秒...")
+    await update.message.reply_text("⏳ 正在抠图并高清增强，请稍等 5~15 秒...")
 
     try:
-        # 获取文件
         photo = update.message.photo[-1]
         file = await photo.get_file()
 
         with tempfile.TemporaryDirectory() as tmp:
             input_path = os.path.join(tmp, "input.jpg")
             output_path = os.path.join(tmp, "output.png")
+            enhanced_path = os.path.join(tmp, "enhanced.png")
 
             await file.download_to_drive(input_path)
 
@@ -192,39 +186,62 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with Image.open(input_path) as img:
                 print(f"📥 原图尺寸: {img.width} x {img.height}")
 
-            # 调用 remove.bg
-            with open(input_path, "rb") as f:
-                response = requests.post(
-                    "https://api.remove.bg/v1.0/removebg",
-                    files={"image_file": f},
-                    data={"size": "auto"},
-                    headers={"X-Api-Key": REMOVE_BG_API_KEY},
-                    timeout=60
-                )
+            # ================================
+            # Step 1: 调用 remove.bg 抠图
+            # ================================
+            response = requests.post(
+                "https://api.remove.bg/v1.0/removebg",
+                files={"image_file": open(input_path, "rb")},
+                data={"size": "auto"},
+                headers={"X-Api-Key": REMOVE_BG_API_KEY},
+                timeout=60
+            )
 
             if response.status_code == 200:
                 with open(output_path, "wb") as f:
                     f.write(response.content)
-
-                # 打印输出尺寸
-                with Image.open(output_path) as out:
-                    print(f"📤 输出尺寸: {out.width} x {out.height}")
-
-                remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
-                await update.message.reply_photo(
-                    photo=open(output_path, "rb"),
-                    caption=f"✅ 抠图完成\n今日剩余 {remaining} 次"
-                )
             else:
                 await update.message.reply_text("❌ 抠图失败，请稍后再试")
+                return
+
+            # ================================
+            # Step 2: 自动下载 Real-ESRGAN 权重
+            # ================================
+            WEIGHTS_PATH = "/tmp/RealESRGAN_x2.pth"
+            if not os.path.exists(WEIGHTS_PATH):
+                url = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/RealESRGAN_x2.pth"
+                r = requests.get(url, stream=True)
+                with open(WEIGHTS_PATH, "wb") as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                print("✅ 权重下载完成")
+
+            # ================================
+            # Step 3: 高清增强
+            # ================================
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            model = RealESRGAN(device, scale=2)
+            model.load_weights(WEIGHTS_PATH)
+
+            img = Image.open(output_path).convert("RGB")
+            enhanced_img = model.predict(img)
+            enhanced_img.save(enhanced_path)
+
+            # 打印输出尺寸
+            with Image.open(enhanced_path) as out:
+                print(f"📤 输出尺寸: {out.width} x {out.height}")
+
+            remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
+
+            # 发送高清抠图结果
+            await update.message.reply_photo(
+                photo=open(enhanced_path, "rb"),
+                caption=f"✅ 高清抠图完成\n今日剩余 {remaining} 次"
+            )
 
     except Exception as e:
-        # 打印完整异常堆栈
-        traceback_str = traceback.format_exc()
-        print("🚨 异常信息:\n", traceback_str)
-        await update.message.reply_text(
-            f"⚠️ 系统异常，请稍后再试\n错误信息: {str(e)}"
-        )
+        traceback.print_exc()
+        await update.message.reply_text("⚠️ 系统异常，请稍后再试")
 
 
 
