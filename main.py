@@ -1,7 +1,12 @@
 # =========================================
-# Echo AI Bot - 最终稳定版
-# 功能：AI 抠图（rembg）+ 背景替换 + 对比图
-# 平台：Replit / Railway
+# Echo AI Bot - 稳定可运行版（Railway 免费）
+# 功能：
+# - 抠图（OpenCV GrabCut，稳定）
+# - 背景替换
+# - 原图 vs 处理图 对比
+# - 使用次数限制（每日重置）
+#
+# ⚠️ AI 功能（rembg / LaMa）已保留但【全部注释】
 # =========================================
 
 import os
@@ -9,14 +14,16 @@ import json
 import tempfile
 import shutil
 from datetime import date
+
+import cv2
+import numpy as np
 from PIL import Image
-from rembg import remove
 
 from telegram import (
     Update,
     ReplyKeyboardMarkup,
     InlineKeyboardButton,
-    InlineKeyboardMarkup,
+    InlineKeyboardMarkup
 )
 from telegram.ext import (
     Application,
@@ -24,11 +31,11 @@ from telegram.ext import (
     MessageHandler,
     ContextTypes,
     filters,
-    CallbackQueryHandler,
+    CallbackQueryHandler
 )
 
 # =========================================
-# 基础配置
+# 配置
 # =========================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/EchoAICut")
@@ -37,9 +44,8 @@ MAX_FREE_TIMES = 3
 USAGE_FILE = "user_usage.json"
 
 if not BOT_TOKEN:
-    raise RuntimeError("❌ 缺少 BOT_TOKEN，请在平台环境变量中设置")
+    raise RuntimeError("❌ 缺少 BOT_TOKEN 环境变量")
 
-# 可选背景颜色
 BG_COLORS = {
     "透明": None,
     "白色": (255, 255, 255),
@@ -49,7 +55,16 @@ BG_COLORS = {
 }
 
 # =========================================
-# 使用次数记录（每天重置）
+# AI 抠图（⚠️ 保留但禁用）
+# =========================================
+"""
+from rembg import remove
+from lama_cleaner.model_manager import get_model
+from lama_cleaner.inference import load_model, inpaint_image
+"""
+
+# =========================================
+# 使用记录
 # =========================================
 def load_usage():
     if os.path.exists(USAGE_FILE):
@@ -69,7 +84,11 @@ user_usage = load_usage()
 # =========================================
 # 键盘
 # =========================================
-MAIN_KEYBOARD = [["✂️ 抠图"], ["📊 今日剩余次数"]]
+MAIN_KEYBOARD = [
+    ["✂️ 抠图"],
+    ["📊 今日剩余次数"]
+]
+
 BG_KEYBOARD = [
     [InlineKeyboardButton(name, callback_data=name)]
     for name in BG_COLORS.keys()
@@ -80,21 +99,21 @@ BG_KEYBOARD = [
 # =========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 欢迎使用 Echo AI 抠图 Bot\n\n"
-        "📸 发送图片 → AI 自动抠图\n"
-        "🎨 选择背景颜色（或透明）\n"
-        "🔍 同时输出对比图\n"
-        "🎁 每天免费 3 次\n\n"
-        "直接发图开始吧！",
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True),
+        "👋 Echo AI Bot\n\n"
+        "📸 发图 → 抠图\n"
+        "🎨 选颜色 → 背景替换\n"
+        "🔍 输出对比图\n\n"
+        "🎁 每天免费 3 次",
+        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True)
     )
 
 # =========================================
-# 文本处理
+# 文本消息
 # =========================================
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     today = str(date.today())
+    text = update.message.text.strip()
 
     if user_id not in user_usage:
         user_usage[user_id] = {"count": 0, "last_date": today}
@@ -105,19 +124,49 @@ async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     save_usage(user_usage)
 
-    if update.message.text == "📊 今日剩余次数":
+    if text == "📊 今日剩余次数":
         used = user_usage[user_id]["count"]
         remaining = max(0, MAX_FREE_TIMES - used)
-        msg = f"📊 今日已使用 {used} 次\n剩余 {remaining} 次"
-        if remaining == 0:
-            msg += f"\n\n👉 加入频道可获取更多机会：\n{CHANNEL_LINK}"
-        await update.message.reply_text(msg)
+        await update.message.reply_text(
+            f"📊 今日已使用 {used} 次\n剩余 {remaining} 次"
+        )
         return
 
-    await update.message.reply_text("📸 请直接发送图片进行处理～")
+    await update.message.reply_text("📸 请直接发送图片")
 
 # =========================================
-# 图片处理（AI 抠图）
+# 核心：稳定抠图（GrabCut）
+# =========================================
+def grabcut_cutout(input_path, output_path):
+    img = cv2.imread(input_path)
+    h, w = img.shape[:2]
+
+    mask = np.zeros((h, w), np.uint8)
+    rect = (10, 10, w - 20, h - 20)
+
+    bgdModel = np.zeros((1, 65), np.float64)
+    fgdModel = np.zeros((1, 65), np.float64)
+
+    cv2.grabCut(
+        img, mask, rect,
+        bgdModel, fgdModel,
+        5, cv2.GC_INIT_WITH_RECT
+    )
+
+    mask2 = np.where(
+        (mask == 2) | (mask == 0),
+        0, 1
+    ).astype("uint8")
+
+    img = img * mask2[:, :, np.newaxis]
+
+    rgba = cv2.cvtColor(img, cv2.COLOR_BGR2BGRA)
+    rgba[:, :, 3] = mask2 * 255
+
+    Image.fromarray(rgba).save(output_path)
+
+# =========================================
+# 图片处理
 # =========================================
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -132,58 +181,53 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_usage[user_id]["count"] >= MAX_FREE_TIMES:
         await update.message.reply_text(
-            f"🚫 今日免费次数已用完\n\n👉 加入频道获取更多机会：\n{CHANNEL_LINK}"
+            f"🚫 今日次数用完\n👉 {CHANNEL_LINK}"
         )
         return
 
     user_usage[user_id]["count"] += 1
     save_usage(user_usage)
 
-    await update.message.reply_text("⏳ 正在 AI 抠图，请稍等 3～8 秒...")
-    user_id = str(update.effective_user.id)
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
+    await update.message.reply_text("⏳ 正在抠图，请稍等...")
 
-    tmp_dir = tempfile.mkdtemp(prefix="echoai_")
-    input_path = os.path.join(tmp_dir, "input.jpg")
-    cut_path = os.path.join(tmp_dir, "cut.png")
-    compare_path = os.path.join(tmp_dir, "compare.jpg")
+    tmp_dir = tempfile.mkdtemp(prefix="echo_")
 
     try:
+        photo = update.message.photo[-1]
+        file = await photo.get_file()
+
+        input_path = os.path.join(tmp_dir, "input.jpg")
+        output_path = os.path.join(tmp_dir, "cut.png")
+        compare_path = os.path.join(tmp_dir, "compare.jpg")
+
         await file.download_to_drive(input_path)
 
-        # ===== 真·AI 抠图（rembg）=====
-        with open(input_path, "rb") as f:
-            result = remove(f.read())
+        # ===== 稳定抠图 =====
+        grabcut_cutout(input_path, output_path)
 
-        with open(cut_path, "wb") as f:
-            f.write(result)
-
-        # ===== 原图 vs 抠图对比 =====
+        # ===== 对比图 =====
         orig = Image.open(input_path).convert("RGB")
-        cut = Image.open(cut_path).convert("RGBA")
+        cut = Image.open(output_path).convert("RGB")
 
         compare = Image.new("RGB", (orig.width * 2, orig.height))
         compare.paste(orig, (0, 0))
-        compare.paste(cut.convert("RGB"), (orig.width, 0))
+        compare.paste(cut, (orig.width, 0))
         compare.save(compare_path)
 
-        remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
-
         context.user_data["tmp_dir"] = tmp_dir
-        context.user_data["cut_path"] = cut_path
-        context.user_data["compare_path"] = compare_path
-        context.user_data["remaining"] = remaining
+        context.user_data["output"] = output_path
+        context.user_data["compare"] = compare_path
+        context.user_data["remaining"] = MAX_FREE_TIMES - user_usage[user_id]["count"]
 
         await update.message.reply_text(
-            f"✅ 抠图完成！请选择背景颜色\n今日剩余 {remaining} 次",
-            reply_markup=InlineKeyboardMarkup(BG_KEYBOARD),
+            "🎨 请选择背景颜色",
+            reply_markup=InlineKeyboardMarkup(BG_KEYBOARD)
         )
 
     except Exception as e:
+        print("❌ 错误:", e)
+        await update.message.reply_text("⚠️ 处理失败")
         shutil.rmtree(tmp_dir, ignore_errors=True)
-        print("处理失败:", e)
-        await update.message.reply_text("⚠️ 图片处理失败，请稍后再试")
 
 # =========================================
 # 背景选择
@@ -192,42 +236,30 @@ async def bg_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    color_name = query.data
-    cut_path = context.user_data.get("cut_path")
-    compare_path = context.user_data.get("compare_path")
+    color = query.data
+    output = context.user_data.get("output")
+    compare = context.user_data.get("compare")
     tmp_dir = context.user_data.get("tmp_dir")
     remaining = context.user_data.get("remaining", 0)
 
-    if not cut_path or not os.path.exists(cut_path):
-        await query.edit_message_text("⚠️ 文件已失效，请重新发送图片")
-        return
-
-    fg = Image.open(cut_path).convert("RGBA")
-    bg_color = BG_COLORS[color_name]
+    fg = Image.open(output).convert("RGBA")
+    bg_color = BG_COLORS[color]
 
     if bg_color:
         bg = Image.new("RGBA", fg.size, bg_color + (255,))
-        bg.paste(fg, (0, 0), fg.split()[3])
-        final_img = bg
+        bg.paste(fg, (0, 0), fg)
     else:
-        final_img = fg
+        bg = fg
 
     final_path = os.path.join(tmp_dir, "final.png")
-    final_img.save(final_path)
+    bg.save(final_path)
 
     await query.edit_message_text(
-        f"✅ 处理完成，背景：{color_name}\n今日剩余 {remaining} 次"
+        f"✅ 完成（背景：{color}）\n今日剩余 {remaining} 次"
     )
 
-    await query.message.reply_photo(
-        photo=open(final_path, "rb"),
-        caption=f"最终图片（背景：{color_name}）",
-    )
-
-    await query.message.reply_photo(
-        photo=open(compare_path, "rb"),
-        caption="原图 vs 抠图对比（左原右处理）",
-    )
+    await query.message.reply_photo(open(final_path, "rb"))
+    await query.message.reply_photo(open(compare, "rb"))
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
 
@@ -242,7 +274,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, reply))
     app.add_handler(CallbackQueryHandler(bg_callback))
 
-    print("🤖 Echo AI Bot 已启动")
+    print("🤖 Echo AI Bot running (Railway Stable)")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
