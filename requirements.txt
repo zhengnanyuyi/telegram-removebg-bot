@@ -1,3 +1,4 @@
 python-telegram-bot==22.5
 rembg
 pillow
+onnxruntime==1.16.3   # 或最新稳定版 cpu 版
