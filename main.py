@@ -1,43 +1,55 @@
-# Echo AI Bot - 最终稳定版（Pillow 抠图 + 背景替换 + 对比图）
-# 2026 年优化版 - Railway / Replit 通用
+# =========================================
+# Echo AI Bot - 最终稳定版
+# 功能：AI 抠图（rembg）+ 背景替换 + 对比图
+# 平台：Replit / Railway
+# =========================================
 
 import os
 import json
 import tempfile
 import shutil
 from datetime import date
-from PIL import Image, ImageFilter
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from PIL import Image
+from rembg import remove
+
+from telegram import (
+    Update,
+    ReplyKeyboardMarkup,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     ContextTypes,
     filters,
-    CallbackQueryHandler
+    CallbackQueryHandler,
 )
 
 # =========================================
-# 配置
+# 基础配置
 # =========================================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHANNEL_LINK = os.getenv("CHANNEL_LINK", "https://t.me/EchoAICut")
+
 MAX_FREE_TIMES = 3
 USAGE_FILE = "user_usage.json"
 
 if not BOT_TOKEN:
-    raise RuntimeError("缺少 BOT_TOKEN 环境变量！请在平台 Variables/Secrets 添加")
+    raise RuntimeError("❌ 缺少 BOT_TOKEN，请在平台环境变量中设置")
 
+# 可选背景颜色
 BG_COLORS = {
     "透明": None,
     "白色": (255, 255, 255),
     "黑色": (0, 0, 0),
     "红色": (255, 0, 0),
-    "蓝色": (0, 0, 255)
+    "蓝色": (0, 0, 255),
 }
 
 # =========================================
-# 使用记录（每天重置）
+# 使用次数记录（每天重置）
 # =========================================
 def load_usage():
     if os.path.exists(USAGE_FILE):
@@ -49,11 +61,8 @@ def load_usage():
     return {}
 
 def save_usage(data):
-    try:
-        with open(USAGE_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"保存失败: {e}")
+    with open(USAGE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
 user_usage = load_usage()
 
@@ -61,20 +70,23 @@ user_usage = load_usage()
 # 键盘
 # =========================================
 MAIN_KEYBOARD = [["✂️ 抠图"], ["📊 今日剩余次数"]]
-BG_KEYBOARD = [[InlineKeyboardButton(name, callback_data=name)] for name in BG_COLORS.keys()]
+BG_KEYBOARD = [
+    [InlineKeyboardButton(name, callback_data=name)]
+    for name in BG_COLORS.keys()
+]
 
 # =========================================
 # /start
 # =========================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 欢迎使用 Echo AI Bot\n\n"
-        "📸 发送图片 → 自动抠图（背景去掉变透明）\n"
-        "🎨 再选颜色 → 背景替换为该颜色（人物不变）\n"
+        "👋 欢迎使用 Echo AI 抠图 Bot\n\n"
+        "📸 发送图片 → AI 自动抠图\n"
+        "🎨 选择背景颜色（或透明）\n"
         "🔍 同时输出对比图\n"
         "🎁 每天免费 3 次\n\n"
-        "发图开始吧！",
-        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True)
+        "直接发图开始吧！",
+        reply_markup=ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True),
     )
 
 # =========================================
@@ -82,29 +94,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================
 async def reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-    text = update.message.text.strip()
     today = str(date.today())
 
     if user_id not in user_usage:
         user_usage[user_id] = {"count": 0, "last_date": today}
+
     if user_usage[user_id]["last_date"] != today:
         user_usage[user_id]["count"] = 0
         user_usage[user_id]["last_date"] = today
+
     save_usage(user_usage)
 
-    if text == "📊 今日剩余次数":
+    if update.message.text == "📊 今日剩余次数":
         used = user_usage[user_id]["count"]
         remaining = max(0, MAX_FREE_TIMES - used)
         msg = f"📊 今日已使用 {used} 次\n剩余 {remaining} 次"
         if remaining == 0:
-            msg += f"\n\n免费次数用完！加入频道再领：{CHANNEL_LINK}"
+            msg += f"\n\n👉 加入频道可获取更多机会：\n{CHANNEL_LINK}"
         await update.message.reply_text(msg)
         return
 
     await update.message.reply_text("📸 请直接发送图片进行处理～")
 
 # =========================================
-# 图片处理（抠图 + 保存到持久路径）
+# 图片处理（AI 抠图）
 # =========================================
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -112,129 +125,114 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_id not in user_usage:
         user_usage[user_id] = {"count": 0, "last_date": today}
+
     if user_usage[user_id]["last_date"] != today:
         user_usage[user_id]["count"] = 0
         user_usage[user_id]["last_date"] = today
 
     if user_usage[user_id]["count"] >= MAX_FREE_TIMES:
-        await update.message.reply_text(f"🚫 今日免费次数已用完\n\n👉 加入频道：{CHANNEL_LINK}")
+        await update.message.reply_text(
+            f"🚫 今日免费次数已用完\n\n👉 加入频道获取更多机会：\n{CHANNEL_LINK}"
+        )
         return
 
     user_usage[user_id]["count"] += 1
     save_usage(user_usage)
 
-    await update.message.reply_text("⏳ 正在抠图 + 生成对比，请稍等 3～8 秒...")
+    await update.message.reply_text("⏳ 正在 AI 抠图，请稍等 3～8 秒...")
+
+    photo = update.message.photo[-1]
+    file = await photo.get_file()
+
+    tmp_dir = tempfile.mkdtemp(prefix="echoai_")
+    input_path = os.path.join(tmp_dir, "input.jpg")
+    cut_path = os.path.join(tmp_dir, "cut.png")
+    compare_path = os.path.join(tmp_dir, "compare.jpg")
 
     try:
-        photo = update.message.photo[-1]
-        file = await photo.get_file()
-
-        # 创建持久临时目录
-        tmp_dir = tempfile.mkdtemp(prefix="bot_")
-        input_path = os.path.join(tmp_dir, "input.jpg")
-        output_path = os.path.join(tmp_dir, "output.png")
-        compare_path = os.path.join(tmp_dir, "compare.jpg")
-
         await file.download_to_drive(input_path)
 
-        # 抠图：阈值法 + 边缘平滑
-        im = Image.open(input_path).convert("RGBA")
-        datas = im.getdata()
-        new_data = []
-        for item in datas:
-            r, g, b, a = item
-            # 背景判断：RGB 平均 > 230 且饱和度低 → 透明
-            avg = (r + g + b) / 3
-            if avg > 230 and max(r,g,b) - min(r,g,b) < 40:
-                new_data.append((255, 255, 255, 0))
-            else:
-                new_data.append(item)
-        im.putdata(new_data)
+        # ===== 真·AI 抠图（rembg）=====
+        with open(input_path, "rb") as f:
+            result = remove(f.read())
 
-        # 边缘平滑（可选，去锯齿）
-        im = im.filter(ImageFilter.GaussianBlur(1))
+        with open(cut_path, "wb") as f:
+            f.write(result)
 
-        im.save(output_path)
-
-        # 并排对比
+        # ===== 原图 vs 抠图对比 =====
         orig = Image.open(input_path).convert("RGB")
-        final = Image.open(output_path).convert("RGB")
-        compare_img = Image.new("RGB", (orig.width * 2, orig.height))
-        compare_img.paste(orig, (0, 0))
-        compare_img.paste(final, (orig.width, 0))
-        compare_img.save(compare_path)
+        cut = Image.open(cut_path).convert("RGBA")
+
+        compare = Image.new("RGB", (orig.width * 2, orig.height))
+        compare.paste(orig, (0, 0))
+        compare.paste(cut.convert("RGB"), (orig.width, 0))
+        compare.save(compare_path)
 
         remaining = max(0, MAX_FREE_TIMES - user_usage[user_id]["count"])
 
         context.user_data["tmp_dir"] = tmp_dir
-        context.user_data["output_path"] = output_path
+        context.user_data["cut_path"] = cut_path
         context.user_data["compare_path"] = compare_path
         context.user_data["remaining"] = remaining
 
         await update.message.reply_text(
-            f"✅ 抠图完成！请选择背景颜色（或透明）\n今日剩余 {remaining} 次",
-            reply_markup=InlineKeyboardMarkup(BG_KEYBOARD)
+            f"✅ 抠图完成！请选择背景颜色\n今日剩余 {remaining} 次",
+            reply_markup=InlineKeyboardMarkup(BG_KEYBOARD),
         )
 
     except Exception as e:
-        print(f"处理失败 - 用户 {user_id}: {str(e)}")
-        await update.message.reply_text("⚠️ 处理失败，请稍后再试～")
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        print("处理失败:", e)
+        await update.message.reply_text("⚠️ 图片处理失败，请稍后再试")
 
 # =========================================
-# 背景替换回调
+# 背景选择
 # =========================================
 async def bg_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     color_name = query.data
-    tmp_dir = context.user_data.get("tmp_dir")
-    output_path = context.user_data.get("output_path")
+    cut_path = context.user_data.get("cut_path")
     compare_path = context.user_data.get("compare_path")
+    tmp_dir = context.user_data.get("tmp_dir")
     remaining = context.user_data.get("remaining", 0)
 
-    if not output_path or not os.path.exists(output_path):
-        await query.edit_message_text("⚠️ 文件已过期或丢失，请重新发图。")
+    if not cut_path or not os.path.exists(cut_path):
+        await query.edit_message_text("⚠️ 文件已失效，请重新发送图片")
         return
 
-    fg = Image.open(output_path).convert("RGBA")
-    bg_color = BG_COLORS.get(color_name)
+    fg = Image.open(cut_path).convert("RGBA")
+    bg_color = BG_COLORS[color_name]
 
     if bg_color:
-        # 创建纯色背景层
-        bg_img = Image.new("RGBA", fg.size, bg_color + (255,))
-        # 只把人物贴到纯色背景上（用 alpha 通道作为蒙版）
-        bg_img.paste(fg, (0, 0), fg.split()[3])
+        bg = Image.new("RGBA", fg.size, bg_color + (255,))
+        bg.paste(fg, (0, 0), fg.split()[3])
+        final_img = bg
     else:
-        bg_img = fg  # 透明保持原样
+        final_img = fg
 
-    final_bg_path = os.path.join(tmp_dir, "final_bg.png")
-    bg_img.save(final_bg_path)
+    final_path = os.path.join(tmp_dir, "final.png")
+    final_img.save(final_path)
 
     await query.edit_message_text(
         f"✅ 处理完成，背景：{color_name}\n今日剩余 {remaining} 次"
     )
 
-    # 发送最终图片（透明或选色背景）
     await query.message.reply_photo(
-        photo=open(final_bg_path, "rb"),
-        caption=f"最终图片（背景：{color_name}）"
+        photo=open(final_path, "rb"),
+        caption=f"最终图片（背景：{color_name}）",
     )
 
-    # 发送对比图
     await query.message.reply_photo(
         photo=open(compare_path, "rb"),
-        caption="原图 vs 处理后对比（左原右处理）"
+        caption="原图 vs 抠图对比（左原右处理）",
     )
 
-    # 清理临时文件夹
-    try:
-        shutil.rmtree(tmp_dir)
-    except:
-        pass
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
 # =========================================
-# 启动 Bot
+# 启动
 # =========================================
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
@@ -245,11 +243,7 @@ def main():
     app.add_handler(CallbackQueryHandler(bg_callback))
 
     print("🤖 Echo AI Bot 已启动")
-    app.run_polling(
-        drop_pending_updates=True,
-        poll_interval=0.5,
-        timeout=20
-    )
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
