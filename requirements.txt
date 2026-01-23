@@ -1,4 +1,6 @@
 python-telegram-bot==22.5
-rembg
+rembg==2.0.58
 pillow
-onnxruntime==1.16.3   # 或最新稳定版 cpu 版
+numpy<2.0
+onnxruntime==1.16.3
+opencv-python-headless==4.9.0.80  # headless 版，不依赖 X11
