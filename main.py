@@ -140,7 +140,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_usage(user_usage)
 
     await update.message.reply_text("⏳ 正在 AI 抠图，请稍等 3～8 秒...")
-
+    user_id = str(update.effective_user.id)
     photo = update.message.photo[-1]
     file = await photo.get_file()
 
