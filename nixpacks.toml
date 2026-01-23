@@ -1,0 +1,9 @@
+# nixpacks.toml - 告诉 Railway 安装系统依赖
+providers = ["python"]
+
+[phases.setup]
+nixPkgs = ['opencv', 'libxcb']
+
+[phases.build]
+dependsOn = ["setup"]
+cmds = ['pip install --no-cache-dir -r requirements.txt']
